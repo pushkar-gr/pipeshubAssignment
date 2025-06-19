@@ -39,6 +39,17 @@ struct OrderResponse {
 };
 
 class OrderManagement {
+private:
+  // config
+  int m_startSeconds; // start time for orders
+  int m_endSeconds;   // end time of for orders
+  std::string m_timeZone;
+  int m_maxOrdersPerSecond;
+
+public:
+  OrderManagement(const std::string &startTime, const std::string &endTime,
+                  const std::string &timeZone, int maxOrdersPerSecond);
+
   void onData(OrderResponse &&response) {}
   void send(const OrderRequest &request) {}
   void sendLogon() {}
