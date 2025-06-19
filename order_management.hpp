@@ -1,7 +1,9 @@
 #pragma once
 
+#include <atomic>
 #include <stdint.h>
 #include <string>
+#include <thread>
 
 struct Logon {
   std::string username;
@@ -45,6 +47,15 @@ private:
   int m_endSeconds;   // end time of for orders
   std::string m_timeZone;
   int m_maxOrdersPerSecond;
+
+  // threads and synchronization
+  std::thread m_timeManagerThread;
+  std::atomic<bool> m_running{false};
+  std::atomic<bool> m_tradingSessionActive{false};
+
+  // helper methods
+  bool isWithinTradingHours() const;
+  void manageTime();
 
 public:
   OrderManagement(const std::string &startTime, const std::string &endTime,
