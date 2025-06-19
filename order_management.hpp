@@ -1,6 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
 #include <stdint.h>
 #include <string>
 #include <thread>
@@ -40,6 +44,16 @@ struct OrderResponse {
   ResponseType m_responseType;
 };
 
+struct QueuedOrder {
+  OrderRequest request;
+  RequestType type;
+  std::chrono::high_resolution_clock::time_point enqueuedTime;
+
+  QueuedOrder(const OrderRequest &request, RequestType &type)
+      : request(request), type(type),
+        enqueuedTime(std::chrono::high_resolution_clock::now()) {}
+};
+
 class OrderManagement {
 private:
   // config
@@ -49,9 +63,15 @@ private:
   int m_maxOrdersPerSecond;
 
   // threads and synchronization
+  std::thread m_processingThread;
   std::thread m_timeManagerThread;
+  std::mutex m_queueMutex;
+  std::condition_variable m_queueCondition;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_tradingSessionActive{false};
+
+  // order management
+  std::queue<QueuedOrder> m_orderQueue;
 
   // helper methods
   bool isWithinTradingHours() const;
@@ -61,6 +81,7 @@ public:
   OrderManagement(const std::string &startTime, const std::string &endTime,
                   const std::string &timeZone, int maxOrdersPerSecond);
 
+  void onData(OrderRequest &&request, RequestType type);
   void onData(OrderResponse &&response) {}
   void send(const OrderRequest &request) {}
   void sendLogon() {}
