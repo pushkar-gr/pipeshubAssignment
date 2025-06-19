@@ -2,7 +2,6 @@
 
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 
 using namespace std;
 
@@ -241,9 +240,9 @@ void OrderManagement::processOrderQueue() {
 }
 
 bool OrderManagement::canSendOrder() {
-  auto now = std::chrono::steady_clock::now();
+  auto now = chrono::steady_clock::now();
   auto elapsed =
-      std::chrono::duration_cast<std::chrono::seconds>(now - m_lastSecondStart);
+      chrono::duration_cast<std::chrono::seconds>(now - m_lastSecondStart);
 
   if (elapsed.count() >= 1) {
     // new second started
