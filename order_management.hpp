@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 struct Logon {
   std::string username;
@@ -54,6 +55,14 @@ struct QueuedOrder {
         enqueuedTime(std::chrono::high_resolution_clock::now()) {}
 };
 
+struct PendingOrder {
+  OrderRequest request;
+  std::chrono::high_resolution_clock::time_point sentTime;
+
+  PendingOrder(const OrderRequest &req)
+      : request(req), sentTime(std::chrono::high_resolution_clock::now()) {}
+};
+
 class OrderManagement {
 private:
   // config
@@ -66,16 +75,25 @@ private:
   std::thread m_processingThread;
   std::thread m_timeManagerThread;
   std::mutex m_queueMutex;
+  std::mutex m_pendingMutex;
   std::condition_variable m_queueCondition;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_tradingSessionActive{false};
 
   // order management
   std::queue<QueuedOrder> m_orderQueue;
+  std::unordered_map<uint64_t, PendingOrder> m_pendingOrders;
+
+  // throttling
+  std::chrono::steady_clock::time_point m_lastSecondStart;
+  int m_ordersThisSecond;
 
   // helper methods
   bool isWithinTradingHours() const;
   void manageTime();
+  void processOrderQueue();
+  bool canSendOrder();
+  void updateThrottling();
 
 public:
   OrderManagement(const std::string &startTime, const std::string &endTime,

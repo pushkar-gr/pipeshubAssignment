@@ -1,5 +1,6 @@
 #include "order_management.hpp"
 
+#include <chrono>
 #include <iostream>
 
 using namespace std;
@@ -119,3 +120,61 @@ void OrderManagement::manageTime() {
     this_thread::sleep_for(chrono::seconds(30));
   }
 }
+
+void OrderManagement::processOrderQueue() {
+  while (m_running.load()) {
+    unique_lock<mutex> lock(m_queueMutex);
+
+    // wait for orders
+    m_queueCondition.wait(
+        lock, [this]() { return !m_orderQueue.empty() || !m_running.load(); });
+
+    if (!m_running.load()) {
+      break;
+    }
+
+    while (!m_orderQueue.empty() && m_tradingSessionActive.load() &&
+           canSendOrder()) {
+      // process order
+      QueuedOrder queuedOrder = m_orderQueue.front();
+      m_orderQueue.pop();
+
+      lock.unlock();
+
+      send(queuedOrder.request);
+
+      {
+        unique_lock<mutex> pendingLock(m_pendingMutex);
+        m_pendingOrders.emplace(queuedOrder.request.m_orderId,
+                                PendingOrder(queuedOrder.request));
+      }
+
+      updateThrottling();
+
+      lock.lock();
+    }
+
+    // wait till next second if we cannot take more oreders due to throttling
+    if (!m_orderQueue.empty() && !canSendOrder()) {
+      lock.unlock();
+      this_thread::sleep_for(chrono::milliseconds(100));
+      lock.lock();
+    }
+  }
+}
+
+bool OrderManagement::canSendOrder() {
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::seconds>(now - m_lastSecondStart);
+
+  if (elapsed.count() >= 1) {
+    // new second started
+    m_lastSecondStart = now;
+    m_ordersThisSecond = 0;
+  }
+
+  return m_ordersThisSecond < m_maxOrdersPerSecond;
+}
+
+void OrderManagement::updateThrottling() { m_ordersThisSecond++; }
