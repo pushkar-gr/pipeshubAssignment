@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <fstream>
 #include <mutex>
 #include <queue>
 #include <stdint.h>
@@ -76,6 +77,7 @@ private:
   std::thread m_timeManagerThread;
   std::mutex m_queueMutex;
   std::mutex m_pendingMutex;
+  std::mutex m_logMutex;
   std::condition_variable m_queueCondition;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_tradingSessionActive{false};
@@ -88,19 +90,30 @@ private:
   std::chrono::steady_clock::time_point m_lastSecondStart;
   int m_ordersThisSecond;
 
+  // logging
+  std::ofstream m_logFile;
+
   // helper methods
   bool isWithinTradingHours() const;
   void manageTime();
   void processOrderQueue();
   bool canSendOrder();
   void updateThrottling();
+  void logResponse(uint64_t orderId, ResponseType responseType,
+                   std::chrono::microseconds latency);
+  std::chrono::microseconds calculateLatency(
+      const std::chrono::high_resolution_clock::time_point &sendTime);
 
 public:
   OrderManagement(const std::string &startTime, const std::string &endTime,
                   const std::string &timeZone, int maxOrdersPerSecond);
+  ~OrderManagement();
+
+  void start();
+  void stop();
 
   void onData(OrderRequest &&request, RequestType type);
-  void onData(OrderResponse &&response) {}
+  void onData(OrderResponse &&response);
   void send(const OrderRequest &request) {}
   void sendLogon() {}
   void sendLogout() {}

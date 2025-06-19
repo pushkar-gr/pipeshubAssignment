@@ -1,13 +1,15 @@
 #include "order_management.hpp"
 
-#include <chrono>
+#include <iomanip>
 #include <iostream>
+#include <mutex>
 
 using namespace std;
 
 OrderManagement::OrderManagement(const string &startTime, const string &endTime,
                                  const string &timeZone, int maxOrdersPerSecond)
-    : m_timeZone(timeZone), m_maxOrdersPerSecond(maxOrdersPerSecond) {
+    : m_timeZone(timeZone), m_maxOrdersPerSecond(maxOrdersPerSecond),
+      m_lastSecondStart(chrono::steady_clock::now()), m_ordersThisSecond(0) {
   // convert HH:MM:SS to seconds
   int startH, startM, startS, endH, endM, endS;
 
@@ -16,6 +18,24 @@ OrderManagement::OrderManagement(const string &startTime, const string &endTime,
 
   m_startSeconds = startH * 3600 + startM * 60 + startS;
   m_endSeconds = endH * 3600 + endM * 60 + endS;
+
+  // open log file for responses
+  m_logFile.open("order_responses.log", ios::app);
+  if (!m_logFile.is_open()) {
+    throw runtime_error("Failed to open log file");
+  }
+
+  // header
+  m_logFile << "Timestamp,OrderId,ResponseType,LatencyMicros\n";
+
+  start();
+}
+
+OrderManagement::~OrderManagement() {
+  stop();
+  if (m_logFile.is_open()) {
+    m_logFile.close();
+  }
 }
 
 void OrderManagement::onData(OrderRequest &&request, RequestType type) {
@@ -87,6 +107,21 @@ void OrderManagement::onData(OrderRequest &&request, RequestType type) {
 
   // notify processing thread
   m_queueCondition.notify_one();
+}
+
+void OrderManagement::onData(OrderResponse &&response) {
+  unique_lock<mutex> lock(m_pendingMutex);
+
+  auto it = m_pendingOrders.find(response.m_orderId);
+  if (it != m_pendingOrders.end()) {
+    auto latency = calculateLatency(it->second.sentTime);
+
+    logResponse(response.m_orderId, response.m_responseType, latency);
+
+    m_pendingOrders.erase(it);
+  } else {
+    cout << "unknown response" << endl;
+  }
 }
 
 bool OrderManagement::isWithinTradingHours() const {
@@ -178,3 +213,36 @@ bool OrderManagement::canSendOrder() {
 }
 
 void OrderManagement::updateThrottling() { m_ordersThisSecond++; }
+
+void OrderManagement::logResponse(uint64_t orderId, ResponseType responseType,
+                                  chrono::microseconds latency) {
+  unique_lock<mutex> lock(m_logMutex);
+
+  auto now = chrono::system_clock::now();
+  auto time_t = chrono::system_clock::to_time_t(now);
+
+  string responseTypeStr;
+  switch (responseType) {
+  case ResponseType::Accept:
+    responseTypeStr = "Accept";
+    break;
+  case ResponseType::Reject:
+    responseTypeStr = "Reject";
+    break;
+  default:
+    responseTypeStr = "Unknown";
+    break;
+  }
+
+  m_logFile << put_time(localtime(&time_t), "%Y-%m-%d %H:%M:%S") << ","
+            << orderId << "," << responseTypeStr << "," << latency.count()
+            << endl;
+
+  m_logFile.flush();
+}
+
+chrono::microseconds OrderManagement::calculateLatency(
+    const chrono::high_resolution_clock::time_point &sentTime) {
+  auto now = chrono::high_resolution_clock::now();
+  return chrono::duration_cast<chrono::microseconds>(now - sentTime);
+}
