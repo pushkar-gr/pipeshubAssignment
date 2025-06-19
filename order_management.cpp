@@ -38,6 +38,46 @@ OrderManagement::~OrderManagement() {
   }
 }
 
+void OrderManagement::start() {
+  if (m_running.load()) {
+    return;
+  }
+
+  m_running.store(true);
+
+  // start process threead
+  m_processingThread = thread(&OrderManagement::processOrderQueue, this);
+
+  // start timer thread
+  m_timeManagerThread = thread(&OrderManagement::manageTime, this);
+}
+
+void OrderManagement::stop() {
+  if (!m_running.load()) {
+    return;
+  }
+
+  m_running.store(false);
+
+  // notify processing threads to wake up
+  m_queueCondition.notify_all();
+
+  // join threads
+  if (m_processingThread.joinable()) {
+    m_processingThread.join();
+  }
+
+  if (m_timeManagerThread.joinable()) {
+    m_timeManagerThread.join();
+  }
+
+  // logout
+  if (m_loggedIn.load()) {
+    sendLogout();
+    m_loggedIn.store(false);
+  }
+}
+
 void OrderManagement::onData(OrderRequest &&request, RequestType type) {
   // check if in trading hours
   if (!m_tradingSessionActive.load()) {
@@ -142,11 +182,13 @@ void OrderManagement::manageTime() {
     if (shouldBeActive && !isActive) {
       // start trading
       sendLogon();
+      m_loggedIn.store(true);
       m_tradingSessionActive.store(true);
       cout << "Logged in" << endl;
     } else if (!shouldBeActive && isActive) {
       // end trading
       sendLogout();
+      m_loggedIn.store(false);
       m_tradingSessionActive.store(false);
       cout << "Logged out" << endl;
     }

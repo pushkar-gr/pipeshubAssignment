@@ -81,6 +81,7 @@ private:
   std::condition_variable m_queueCondition;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_tradingSessionActive{false};
+  std::atomic<bool> m_loggedIn{false};
 
   // order management
   std::queue<QueuedOrder> m_orderQueue;
