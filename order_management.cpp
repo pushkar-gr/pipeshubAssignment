@@ -102,7 +102,7 @@ void OrderManagement::onData(OrderRequest &&request, RequestType type) {
       QueuedOrder currentOrder = m_orderQueue.front();
       m_orderQueue.pop();
 
-      if (currentOrder.request.m_orderId == request.m_orderId) {
+      if (currentOrder.request.m_orderId == request.m_orderId && !found) {
         currentOrder.request.m_price = request.m_price;
         currentOrder.request.m_qty = request.m_qty;
         found = true;

@@ -51,7 +51,7 @@ struct QueuedOrder {
   RequestType type;
   std::chrono::high_resolution_clock::time_point enqueuedTime;
 
-  QueuedOrder(const OrderRequest &request, RequestType &type)
+  QueuedOrder(const OrderRequest &request, RequestType type)
       : request(request), type(type),
         enqueuedTime(std::chrono::high_resolution_clock::now()) {}
 };
